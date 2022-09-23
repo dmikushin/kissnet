@@ -1613,6 +1613,23 @@ namespace kissnet
 			}
 
 			/**
+			 * @brief Clears the results of last select operation for the given socket
+			 * 
+			 * @param fd 
+			 * @param setType 
+			 */
+			void clearStatus(SOCKET fd, FdSetType setType)
+			{
+				if(static_cast<int>(setType) > 2)
+				{
+					fprintf(stderr, "Unknown fd set type value: %d\n", (int)setType);
+					return;
+				}
+
+				FD_CLR(fd, &mFdSetsCopy[setType]);
+			}
+
+			/**
 			 * @brief Issues select for sockets which are registered to one of 
 			 * the read, write, or except fd sets. After issuing a call to 
 			 * select, you can read the status of a registered socket using 
