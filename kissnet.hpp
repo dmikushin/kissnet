@@ -1250,7 +1250,7 @@ namespace kissnet
 				return socket_status::valid;
 
 			fd_set fd_read, fd_write, fd_except;
-			;
+
 			struct timeval tv;
 
 			tv.tv_sec  = static_cast<long>(timeout / 1000);
@@ -1510,6 +1510,151 @@ namespace kissnet
 		}
 	};
 
+	enum FdSetType
+	{
+		read,
+		write,
+		except
+	};
+
+	class FdSets
+	{
+		fd_set mFdSets[3] {};
+		static fd_set mFdSetNull;
+
+	public :
+	
+		fd_set& operator[](FdSetType setType)
+		{
+			if(static_cast<int>(setType) > 2)
+			{
+				fprintf(stderr, "Unknown fd set type value: %d\n", (int)setType);
+				return mFdSetNull;
+			}	
+			return mFdSets[static_cast<int>(setType)];
+		}
+
+		/**
+		 * @brief Returns whether the socket with the given file descriptor 
+		 * is readable or not. The returned status is only valid if a call 
+		 * to select has been issued.
+		 * 
+		 * @param fd 
+		 * @return true 
+		 * @return false 
+		 */
+		bool isReadable(SOCKET fd)
+		{
+			return FD_ISSET(fd, &mFdSets[FdSetType::read]);
+		}
+
+		/**
+		 * @brief Returns whether the socket with the given file descriptor 
+		 * is writable or not. The returned status is only valid if a call 
+		 * to select has been issued.
+		 * 
+		 * @param fd 
+		 * @return true 
+		 * @return false 
+		 */
+		bool isWritable(SOCKET fd)
+		{
+			return FD_ISSET(fd, &mFdSets[FdSetType::write]);
+		}
+
+
+		/**
+		 * @brief Returns whether the socket with the given file descriptor 
+		 * has exceptions or not. The returned status is only valid if a 
+		 * call to select has been issued.
+		 * 
+		 * @param fd 
+		 * @return true 
+		 * @return false 
+		 */
+		bool hasExceptions(SOCKET fd)
+		{
+			return FD_ISSET(fd, &mFdSets[FdSetType::except]);
+		}
+
+		/**
+		 * @brief Returns whether the socket with the given file descriptor 
+		 * has been registered to the given fd set type or not.
+		 * 
+		 * @param fd 
+		 * @param setType 
+		 * @return true Indicates the socket is registered to given fd set 
+		 * type
+		 * @return false Indicates the socket isn't registered to given fd 
+		 * set type yet
+		 */
+		bool isSet(SOCKET fd, FdSetType setType)
+		{
+			return FD_ISSET(fd, &mFdSets[setType]);
+		}
+
+		/**
+		 * @brief Registers the socket with the given file descriptor to a 
+		 * fd_set specified with setType
+		 * 
+		 * @param fd File descriptor of the socket
+		 * @param setType Type of the fd_set which the socket will be 
+		 * registered to
+		 */
+		void registerSocket(SOCKET fd, FdSetType setType)
+		{
+			FD_SET(fd, &mFdSets[setType]);
+		}
+
+		/**
+		 * @brief Registers the socket with the given file descriptor to 
+		 * all of the existing fd sets
+		 * 
+		 * @param fd File descriptor of the socket
+		 */
+		void registerSocket(SOCKET fd)
+		{
+			FD_SET(fd, &mFdSets[FdSetType::read]);
+			FD_SET(fd, &mFdSets[FdSetType::write]);
+			FD_SET(fd, &mFdSets[FdSetType::except]);
+		}
+
+		/**
+		 * @brief Unregisters the socket with the given file descriptor 
+		 * from a fd_set specified with setType
+		 * @param fd File descriptor of the socket
+		 * @param setType Type of the fd_set which the socket will be 
+		 * removed from
+		 */
+		void unregisterSocket(SOCKET fd, FdSetType setType)
+		{
+			FD_CLR(fd, &mFdSets[setType]);
+		}
+
+		/**
+		 * @brief Removes the given socket from all of the existing fd_sets
+		 * 
+		 * @param fd 
+		 */
+		void unregisterSocket(SOCKET fd)
+		{
+			FD_CLR(fd, &mFdSets[FdSetType::read]);
+			FD_CLR(fd, &mFdSets[FdSetType::write]);
+			FD_CLR(fd, &mFdSets[FdSetType::except]);
+		}
+
+		/**
+		 * @brief Clears the results of last select operation for the given socket
+		 * 
+		 * @param fd 
+		 * @param setType 
+		 */
+		void clearStatus(SOCKET fd, FdSetType setType)
+		{
+			FD_CLR(fd, &mFdSets[setType]);
+		}
+	};
+
 	/**
 	 * @brief MultiSocketSelector class which is designed to query the readablity, 
 	 * writablity, and exception status of the sockets registered to the fd 
@@ -1518,224 +1663,112 @@ namespace kissnet
 	 */
 	class KISSNET_API MultiSocketSelector
 	{
-		fd_set mFdSets[3];
-		fd_set mFdSetsCopy[3];
+		FdSets mFdSets;
 
-		MultiSocketSelector()
+		MultiSocketSelector() { }
+
+	public:
+
+		/**
+		 * @brief Returns a MultiSocketSelector instance.
+		 * 
+		 * @return MultiSocketSelector* 
+		 */
+		static MultiSocketSelector* instance()
 		{
-			FD_ZERO(&mFdSets[FdSetType::read]);
-			FD_ZERO(&mFdSets[FdSetType::write]);
-			FD_ZERO(&mFdSets[FdSetType::except]);
-			FD_ZERO(&mFdSetsCopy[FdSetType::read]);
-			FD_ZERO(&mFdSetsCopy[FdSetType::write]);
-			FD_ZERO(&mFdSetsCopy[FdSetType::except]);
+			static MultiSocketSelector socketSelector;
+			return &socketSelector;
 		}
 
-		public:
-			enum FdSetType
-			{
-				read,
-				write,
-				except
-			};
+		/**
+		 * @brief Registers the socket with the given file descriptor to a 
+		 * fd_set specified with setType
+		 * 
+		 * @param fd File descriptor of the socket
+		 * @param setType Type of the fd_set which the socket will be 
+		 * registered to
+		 */
+		void registerSocket(SOCKET fd, FdSetType setType)
+		{
+			mFdSets.registerSocket(fd, setType);
+		}
 
-			/**
-			 * @brief Returns a MultiSocketSelector instance.
-			 * 
-			 * @return MultiSocketSelector* 
-			 */
-			static MultiSocketSelector* instance()
-			{
-				static MultiSocketSelector socketSelector;
-				return &socketSelector;
-			}
+		/**
+		 * @brief Registers the socket with the given file descriptor to 
+		 * all of the existing fd sets
+		 * 
+		 * @param fd File descriptor of the socket
+		 */
+		void registerSocket(SOCKET fd)
+		{
+			mFdSets.registerSocket(fd);
+		}
 
-			/**
-			 * @brief Registers the socket with the given file descriptor to a 
-			 * fd_set specified with setType
-			 * 
-			 * @param fd File descriptor of the socket
-			 * @param setType Type of the fd_set which the socket will be 
-			 * registered to
-			 */
-			void registerSocket(SOCKET fd, FdSetType setType)
-			{
+		/**
+		 * @brief Unregisters the socket with the given file descriptor 
+		 * from a fd_set specified with setType
+		 * @param fd File descriptor of the socket
+		 * @param setType Type of the fd_set which the socket will be 
+		 * removed from
+		 */
+		void unregisterSocket(SOCKET fd, FdSetType setType)
+		{
+			mFdSets.unregisterSocket(fd, setType);
+		}
 
-				if(static_cast<int>(setType) > 2)
-				{
-					fprintf(stderr, "Unknown fd set type value: %d\n", (int)setType);
-					return;
-				}
-				FD_SET(fd, &mFdSets[setType]);
-			}
+		/**
+		 * @brief Removes the given socket from all of the existing fd_sets
+		 * 
+		 * @param fd 
+		 */
+		void unregisterSocket(SOCKET fd)
+		{
+			mFdSets.unregisterSocket(fd);
+		}
 
-			/**
-			 * @brief Registers the socket with the given file descriptor to 
-			 * all of the existing fd sets
-			 * 
-			 * @param fd File descriptor of the socket
-			 */
-			void registerSocket(SOCKET fd)
-			{
-				FD_SET(fd, &mFdSets[FdSetType::read]);
-				FD_SET(fd, &mFdSets[FdSetType::write]);
-				FD_SET(fd, &mFdSets[FdSetType::except]);
-			}
+		/**
+		 * @brief Issues select for sockets which are registered to one of 
+		 * the read, write, or except fd sets. After issuing a call to 
+		 * select, you can read the status of a registered socket using 
+		 * isReadable, isWritable, and hasException functions.
+		 * 
+		 * @param timeout 
+		 * @return socket_status 
+		 */
+		socket_status select(int64_t timeout, FdSets& fdSetsResult)
+		{
+#ifdef _WIN32
+			int nfds = 
+				mFdSets[FdSetType::read].fd_count > 
+				mFdSets[FdSetType::write].fd_count ? 
+				mFdSets[FdSetType::read].fd_count : 
+				mFdSets[FdSetType::write].fd_count;
 
-			/**
-			 * @brief Unregisters the socket with the given file descriptor 
-			 * from a fd_set specified with setType
-			 * @param fd File descriptor of the socket
-			 * @param setType Type of the fd_set which the socket will be 
-			 * removed from
-			 */
-			void unregisterSocket(SOCKET fd, FdSetType setType)
-			{
-				if(static_cast<int>(setType) > 2)
-				{
-					fprintf(stderr, "Unknown fd set type value: %d\n", (int)setType);
-					return;
-				}
+			nfds = nfds > mFdSets[FdSetType::except].fd_count ? nfds : 
+				mFdSets[FdSetType::except].fd_count;
+#else
+			int nfds = 0; // TODO
+#endif
+			fdSetsResult = mFdSets;
 
-				FD_CLR(fd, &mFdSets[setType]);
-			}
+			struct timeval tv;
 
-			/**
-			 * @brief Removes the given socket from all of the existing fd_sets
-			 * 
-			 * @param fd 
-			 */
-			void unregisterSocket(SOCKET fd)
-			{
-				FD_CLR(fd, &mFdSets[FdSetType::read]);
-				FD_CLR(fd, &mFdSets[FdSetType::write]);
-				FD_CLR(fd, &mFdSets[FdSetType::except]);
-			}
+			tv.tv_sec  = static_cast<long>(timeout / 1000);
+			tv.tv_usec = 1000 * static_cast<long>(timeout % 1000);
 
-			/**
-			 * @brief Clears the results of last select operation for the given socket
-			 * 
-			 * @param fd 
-			 * @param setType 
-			 */
-			void clearStatus(SOCKET fd, FdSetType setType)
-			{
-				if(static_cast<int>(setType) > 2)
-				{
-					fprintf(stderr, "Unknown fd set type value: %d\n", (int)setType);
-					return;
-				}
+			int ret = syscall_select(nfds,
+				&fdSetsResult[FdSetType::read],
+				&fdSetsResult[FdSetType::write],
+				&fdSetsResult[FdSetType::except],
+				&tv);
 
-				FD_CLR(fd, &mFdSetsCopy[setType]);
-			}
+			if (ret == -1)
+				return socket_status::errored;
+			else if (ret == 0)
+				return socket_status::timed_out;
 
-			/**
-			 * @brief Issues select for sockets which are registered to one of 
-			 * the read, write, or except fd sets. After issuing a call to 
-			 * select, you can read the status of a registered socket using 
-			 * isReadable, isWritable, and hasException functions.
-			 * 
-			 * @param timeout 
-			 * @return socket_status 
-			 */
-			socket_status select(int64_t timeout)
-			{
-				int nfds = 
-					mFdSets[FdSetType::read].fd_count > 
-					mFdSets[FdSetType::write].fd_count ? 
-					mFdSets[FdSetType::read].fd_count : 
-					mFdSets[FdSetType::write].fd_count;
-				
-				nfds = nfds > mFdSets[FdSetType::except].fd_count ? nfds : 
-					mFdSets[FdSetType::except].fd_count;
-
-				mFdSetsCopy[FdSetType::read] = mFdSets[FdSetType::read];
-				mFdSetsCopy[FdSetType::write] = mFdSets[FdSetType::write];
-				mFdSetsCopy[FdSetType::except] = mFdSets[FdSetType::except];
-
-				struct timeval tv;
-
-				tv.tv_sec  = static_cast<long>(timeout / 1000);
-				tv.tv_usec = 1000 * static_cast<long>(timeout % 1000);
-
-				int ret = syscall_select(nfds,
-					&mFdSetsCopy[FdSetType::read],
-					&mFdSetsCopy[FdSetType::write],
-					&mFdSetsCopy[FdSetType::except],
-					&tv);
-
-				if (ret == -1)
-					return socket_status::errored;
-				else if (ret == 0)
-					return socket_status::timed_out;
-
-				return socket_status::valid;
-			}
-
-			/**
-			 * @brief Returns whether the socket with the given file descriptor 
-			 * is readable or not. The returned status is only valid if a call 
-			 * to select has been issued.
-			 * 
-			 * @param fd 
-			 * @return true 
-			 * @return false 
-			 */
-			bool isReadable(SOCKET fd)
-			{
-				return FD_ISSET(fd, &mFdSetsCopy[FdSetType::read]);
-			}
-
-			/**
-			 * @brief Returns whether the socket with the given file descriptor 
-			 * is writable or not. The returned status is only valid if a call 
-			 * to select has been issued.
-			 * 
-			 * @param fd 
-			 * @return true 
-			 * @return false 
-			 */
-			bool isWritable(SOCKET fd)
-			{
-				return FD_ISSET(fd, &mFdSetsCopy[FdSetType::write]);
-			}
-
-
-			/**
-			 * @brief Returns whether the socket with the given file descriptor 
-			 * has exceptions or not. The returned status is only valid if a 
-			 * call to select has been issued.
-			 * 
-			 * @param fd 
-			 * @return true 
-			 * @return false 
-			 */
-			bool hasExceptions(SOCKET fd)
-			{
-				return FD_ISSET(fd, &mFdSetsCopy[FdSetType::except]);
-			}
-
-			/**
-			 * @brief Returns whether the socket with the given file descriptor 
-			 * has been registered to the given fd set type or not.
-			 * 
-			 * @param fd 
-			 * @param setType 
-			 * @return true Indicates the socket is registered to given fd set 
-			 * type
-			 * @return false Indicates the socket isn't registered to given fd 
-			 * set type yet
-			 */
-			bool isSet(SOCKET fd, FdSetType setType)
-			{
-				if(static_cast<int>(setType) > 2)
-				{
-					fprintf(stderr, "Unknown fd set type value: %d\n", (int)setType);
-					return false;
-				}	
-				return FD_ISSET(fd, &mFdSetsCopy[setType]);
-			}
-
+			return socket_status::valid;
+		}
 	};
 
 	///Alias for socket<protocol::tcp>

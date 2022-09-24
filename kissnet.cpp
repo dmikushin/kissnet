@@ -22,3 +22,4 @@ std::map<SOCKET, kissnet::tcp_ssl_socket*> KISSNET_API kissnet::tcp_ssl_socket::
 template<>
 std::map<SOCKET, kissnet::udp_socket*> KISSNET_API kissnet::udp_socket::sockets {};
 
+fd_set kissnet::FdSets::mFdSetNull;
