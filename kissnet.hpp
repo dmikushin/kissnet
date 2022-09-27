@@ -1521,6 +1521,10 @@ namespace kissnet
 	{
 		fd_set mFdSets[3] {};
 		static fd_set mFdSetNull;
+		
+		#ifndef _WIN32
+		int mHighestFd;
+		#endif
 
 	public :
 	
@@ -1532,6 +1536,25 @@ namespace kissnet
 				return mFdSetNull;
 			}	
 			return mFdSets[static_cast<int>(setType)];
+		}
+
+		int getNfds() const
+		{
+			int nfds = 0;
+			#ifdef _WIN32
+			nfds = 
+				mFdSets[FdSetType::read].fd_count > 
+				mFdSets[FdSetType::write].fd_count ? 
+				mFdSets[FdSetType::read].fd_count : 
+				mFdSets[FdSetType::write].fd_count;
+
+			nfds = nfds > mFdSets[FdSetType::except].fd_count ? nfds : 
+				mFdSets[FdSetType::except].fd_count;
+			#else
+				nfds = mHighestFd;
+			#endif
+
+			return nfds;
 		}
 
 		/**
@@ -1603,6 +1626,9 @@ namespace kissnet
 		 */
 		void registerSocket(SOCKET fd, FdSetType setType)
 		{
+			#ifndef _WIN32
+			mHighestFd = std::max(mHighestFd, fd);
+			#endif
 			FD_SET(fd, &mFdSets[setType]);
 		}
 
@@ -1614,6 +1640,9 @@ namespace kissnet
 		 */
 		void registerSocket(SOCKET fd)
 		{
+			#ifndef _WIN32
+			mHighestFd = std::max(mHighestFd, fd);
+			#endif
 			FD_SET(fd, &mFdSets[FdSetType::read]);
 			FD_SET(fd, &mFdSets[FdSetType::write]);
 			FD_SET(fd, &mFdSets[FdSetType::except]);
@@ -1668,7 +1697,8 @@ namespace kissnet
 		MultiSocketSelector() { }
 
 	public:
-
+		MultiSocketSelector(MultiSocketSelector const& t) = delete;
+		MultiSocketSelector operator=(MultiSocketSelector const&) = delete;
 		/**
 		 * @brief Returns a MultiSocketSelector instance.
 		 * 
@@ -1737,18 +1767,6 @@ namespace kissnet
 		 */
 		socket_status select(int64_t timeout, FdSets& fdSetsResult)
 		{
-#ifdef _WIN32
-			int nfds = 
-				mFdSets[FdSetType::read].fd_count > 
-				mFdSets[FdSetType::write].fd_count ? 
-				mFdSets[FdSetType::read].fd_count : 
-				mFdSets[FdSetType::write].fd_count;
-
-			nfds = nfds > mFdSets[FdSetType::except].fd_count ? nfds : 
-				mFdSets[FdSetType::except].fd_count;
-#else
-			int nfds = 0; // TODO
-#endif
 			fdSetsResult = mFdSets;
 
 			struct timeval tv;
@@ -1756,7 +1774,7 @@ namespace kissnet
 			tv.tv_sec  = static_cast<long>(timeout / 1000);
 			tv.tv_usec = 1000 * static_cast<long>(timeout % 1000);
 
-			int ret = syscall_select(nfds,
+			int ret = syscall_select(mFdSets.getNfds(),
 				&fdSetsResult[FdSetType::read],
 				&fdSetsResult[FdSetType::write],
 				&fdSetsResult[FdSetType::except],
