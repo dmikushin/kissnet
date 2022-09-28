@@ -1526,7 +1526,7 @@ namespace kissnet
 		int mHighestFd;
 		#endif
 
-	public :
+	public:
 	
 		fd_set& operator[](FdSetType setType)
 		{
@@ -1551,7 +1551,7 @@ namespace kissnet
 			nfds = nfds > mFdSets[FdSetType::except].fd_count ? nfds : 
 				mFdSets[FdSetType::except].fd_count;
 			#else
-				nfds = mHighestFd;
+				nfds = mHighestFd + 1;
 			#endif
 
 			return nfds;
@@ -1682,6 +1682,9 @@ namespace kissnet
 		{
 			FD_CLR(fd, &mFdSets[setType]);
 		}
+
+
+		friend class MultiSocketSelector;
 	};
 
 	/**
@@ -1767,7 +1770,9 @@ namespace kissnet
 		 */
 		socket_status select(int64_t timeout, FdSets& fdSetsResult)
 		{
-			fdSetsResult = mFdSets;
+			fdSetsResult[FdSetType::read] = mFdSets[FdSetType::read];
+			fdSetsResult[FdSetType::write] = mFdSets[FdSetType::write];
+			fdSetsResult[FdSetType::except] = mFdSets[FdSetType::except];
 
 			struct timeval tv;
 
