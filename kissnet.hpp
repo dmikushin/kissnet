@@ -1443,7 +1443,16 @@ namespace kissnet
 			else if constexpr (sock_proto == protocol::udp)
 			{
 				socket_input_socklen = sizeof socket_input;
+				if(wait)
+				{
+					fd_set fd_read, fd_except;
+					FD_ZERO(&fd_read);
+					FD_SET(sock, &fd_read);
+					FD_ZERO(&fd_except);
+					FD_SET(sock, &fd_except);
 
+					syscall_select(static_cast<int>(sock) + 1, &fd_read, NULL, &fd_except, NULL);
+				}
 				received_bytes = ::recvfrom(sock, reinterpret_cast<char*>(buffer), static_cast<buffsize_t>(len), 0, reinterpret_cast<sockaddr*>(&socket_input), &socket_input_socklen);
 				if (addr_info) {
 				    addr_info->adrinf = socket_input;
