@@ -841,6 +841,23 @@ namespace kissnet
 		socket(endpoint bind_to) :
 		 bind_loc { std::move(bind_to) }
 		{
+			initialize();
+		}
+
+		///Construct a socket from an operating system socket, an additional endpoint to remember from where we are
+		socket(SOCKET native_sock, endpoint bind_to) :
+		 sock { native_sock }, bind_loc(std::move(bind_to))
+		{
+			KISSNET_OS_INIT;
+
+			initialize_addrinfo();
+		}
+
+		static std::map<SOCKET, socket*> sockets;
+
+	public:
+		void initialize()
+		{
 			//operating system related housekeeping
 			KISSNET_OS_INIT;
 
@@ -867,20 +884,6 @@ namespace kissnet
 				kissnet_fatal_error("unable to create socket!");
 			}
 		}
-
-		///Construct a socket from an operating system socket, an additional endpoint to remember from where we are
-		socket(SOCKET native_sock, endpoint bind_to) :
-		 sock { native_sock }, bind_loc(std::move(bind_to))
-		{
-			KISSNET_OS_INIT;
-
-			initialize_addrinfo();
-		}
-
-		static std::map<SOCKET, socket*> sockets;
-
-	public:
-
 		///Get a socket and (if applicable) connect to the endpoint
 		static socket& get(endpoint bind_to)
 		{
