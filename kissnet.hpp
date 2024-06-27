@@ -933,6 +933,8 @@ namespace kissnet
 		/// \param state By default "true". If put to false, it will set the socket back into blocking, normal mode
 		void set_non_blocking(bool state = true) const
 		{
+			if(!is_valid())
+				return;
 #ifdef _WIN32
 			ioctl_setting set = state ? 1 : 0;
 			if (ioctlsocket(sock, FIONBIO, &set) < 0)
