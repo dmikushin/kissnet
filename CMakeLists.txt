@@ -24,6 +24,10 @@ target_include_directories(kissnet INTERFACE
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
 set_property(TARGET kissnet PROPERTY POSITION_INDEPENDENT_CODE ON)
 
+if(MINGW)
+target_link_libraries(kissnet PUBLIC ws2_32)
+endif()
+
 find_package(OpenSSL)
 
 if(OpenSSL_FOUND)
