@@ -841,6 +841,23 @@ namespace kissnet
 		socket(endpoint bind_to) :
 		 bind_loc { std::move(bind_to) }
 		{
+			initialize();
+		}
+
+		///Construct a socket from an operating system socket, an additional endpoint to remember from where we are
+		socket(SOCKET native_sock, endpoint bind_to) :
+		 sock { native_sock }, bind_loc(std::move(bind_to))
+		{
+			KISSNET_OS_INIT;
+
+			initialize_addrinfo();
+		}
+
+		static std::map<SOCKET, socket*> sockets;
+
+	public:
+		void initialize()
+		{
 			//operating system related housekeeping
 			KISSNET_OS_INIT;
 
@@ -867,20 +884,6 @@ namespace kissnet
 				kissnet_fatal_error("unable to create socket!");
 			}
 		}
-
-		///Construct a socket from an operating system socket, an additional endpoint to remember from where we are
-		socket(SOCKET native_sock, endpoint bind_to) :
-		 sock { native_sock }, bind_loc(std::move(bind_to))
-		{
-			KISSNET_OS_INIT;
-
-			initialize_addrinfo();
-		}
-
-		static std::map<SOCKET, socket*> sockets;
-
-	public:
-
 		///Get a socket and (if applicable) connect to the endpoint
 		static socket& get(endpoint bind_to)
 		{
@@ -930,6 +933,8 @@ namespace kissnet
 		/// \param state By default "true". If put to false, it will set the socket back into blocking, normal mode
 		void set_non_blocking(bool state = true) const
 		{
+			if(!is_valid())
+				return;
 #ifdef _WIN32
 			ioctl_setting set = state ? 1 : 0;
 			if (ioctlsocket(sock, FIONBIO, &set) < 0)
@@ -1443,7 +1448,16 @@ namespace kissnet
 			else if constexpr (sock_proto == protocol::udp)
 			{
 				socket_input_socklen = sizeof socket_input;
+				if(wait)
+				{
+					fd_set fd_read, fd_except;
+					FD_ZERO(&fd_read);
+					FD_SET(sock, &fd_read);
+					FD_ZERO(&fd_except);
+					FD_SET(sock, &fd_except);
 
+					syscall_select(static_cast<int>(sock) + 1, &fd_read, NULL, &fd_except, NULL);
+				}
 				received_bytes = ::recvfrom(sock, reinterpret_cast<char*>(buffer), static_cast<buffsize_t>(len), 0, reinterpret_cast<sockaddr*>(&socket_input), &socket_input_socklen);
 				if (addr_info) {
 				    addr_info->adrinf = socket_input;
